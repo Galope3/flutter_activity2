@@ -1,14 +1,19 @@
 import 'dart:async';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'network_diagnostics.dart';
+import 'network_monitor.dart';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 const _teal = Color(0xFF12A9A5);
 
 void main() => runApp(
-  ChangeNotifierProvider(
-    create: (_) => AppSettings(),
+  MultiProvider(
+    providers: [
+      ChangeNotifierProvider(create: (_) => AppSettings()),
+      ChangeNotifierProvider(create: (_) => NetworkDiagnostics()..start()),
+    ],
     child: const PortfolioApp(),
   ),
 );
@@ -58,15 +63,15 @@ class PortfolioApp extends StatelessWidget {
     );
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'LabMaster',
+      title: 'Activity Lab',
       theme: light,
       darkTheme: dark,
       themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       routes: {
         '/': (_) => const HomeDashboard(),
         '/activity-one': (_) => const ActivityOneScreen(),
-        '/activity-two': (_) => const ActivityTwoScreen(),
-        '/network': (_) => const NetworkMonitorScreen(),
+        '/diagnostics': (_) => const NetworkDiagnosticDashboard(),
+        '/network-monitor': (_) => const NetworkMonitorScreen(),
         '/settings': (_) => const SettingsScreen(),
       },
     );
@@ -94,7 +99,7 @@ class HomeDashboard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'LabMaster',
+                        'Activity Lab',
                         style: TextStyle(
                           fontSize: 25,
                           fontWeight: FontWeight.w700,
@@ -139,32 +144,19 @@ class HomeDashboard extends StatelessWidget {
                     route: '/activity-one',
                   ),
                   ActivityCard(
-                    icon: Icons.code_rounded,
-                    title: 'Activity 2',
-                    subtitle: 'Mobile App\nDevelopment',
-                    route: '/activity-two',
+                    icon: Icons.monitor_heart_outlined,
+                    title: 'Network Diagnostics',
+                    subtitle: 'Connection health\nand performance',
+                    route: '/diagnostics',
                   ),
                   ActivityCard(
-                    icon: Icons.menu_book_outlined,
-                    title: 'Activity 3',
-                    subtitle: 'Database Systems',
-                    route: '/activity-one',
-                  ),
-                  ActivityCard(
-                    icon: Icons.cloud_outlined,
-                    title: 'Activity 4',
-                    subtitle: 'Web Development',
-                    route: '/activity-two',
-                  ),
+                    icon: Icons.wifi_tethering_outlined,
+                    title: 'Network Monitor',
+                    subtitle: 'Live connection\nand request recovery',
+                    route: '/network-monitor',
+                  )
                 ],
               ),
-            ),
-            const SizedBox(height: 14),
-            MenuTile(
-              icon: Icons.settings,
-              title: 'Settings',
-              subtitle: 'Theme, Profile, and more',
-              onTap: () => Navigator.pushNamed(context, '/settings'),
             ),
           ],
         ),
@@ -305,67 +297,6 @@ class _ActivityOneScreenState extends State<ActivityOneScreen> {
             title: '${lesson.$1}. ${lesson.$2}',
             subtitle: lesson.$3,
           ),
-        ),
-      ],
-    ),
-  );
-}
-
-class ActivityTwoScreen extends StatefulWidget {
-  const ActivityTwoScreen({super.key});
-  @override
-  State<ActivityTwoScreen> createState() => _ActivityTwoScreenState();
-}
-
-class _ActivityTwoScreenState extends State<ActivityTwoScreen> {
-  int tab = 0;
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Activity 2'),
-      actions: const [Icon(Icons.more_vert), SizedBox(width: 12)],
-    ),
-    bottomNavigationBar: const AppNav(index: 1),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const ActivityHeader(
-          icon: Icons.code_rounded,
-          title: 'Mobile App\nDevelopment',
-          subtitle: 'Build Flutter projects, one practical task at a time.',
-        ),
-        const SizedBox(height: 24),
-        SegmentTabs(
-          labels: const ['Lab Tasks', 'Resources'],
-          selected: tab,
-          onChanged: (value) => setState(() => tab = value),
-        ),
-        const SizedBox(height: 18),
-        const TaskTile(
-          icon: Icons.document_scanner_outlined,
-          title: 'Lab 1. Hello World',
-          subtitle: 'Create a simple Flutter app',
-        ),
-        const TaskTile(
-          icon: Icons.widgets_outlined,
-          title: 'Lab 2. Widgets',
-          subtitle: 'Build a responsive UI',
-        ),
-        const TaskTile(
-          icon: Icons.mobile_screen_share_outlined,
-          title: 'Lab 3. Navigation',
-          subtitle: 'Implement multiple screens',
-        ),
-        const TaskTile(
-          icon: Icons.account_tree_outlined,
-          title: 'Lab 4. State Management',
-          subtitle: 'Use Provider for global state',
-        ),
-        TaskTile(
-          icon: Icons.network_check_outlined,
-          title: 'Network Monitor',
-          subtitle: 'View connectivity and queued requests',
-          onTap: () => Navigator.pushNamed(context, '/network'),
         ),
       ],
     ),
@@ -664,7 +595,7 @@ class AppNav extends StatelessWidget {
     onDestinationSelected: (value) {
       if (value == 0)
         Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
-      if (value == 1) Navigator.pushNamed(context, '/activity-two');
+      if (value == 1) Navigator.pushNamed(context, '/diagnostics');
       if (value == 2) Navigator.pushNamed(context, '/settings');
     },
     destinations: const [
@@ -686,124 +617,108 @@ class AppNav extends StatelessWidget {
   );
 }
 
-class NetworkMonitorScreen extends StatefulWidget {
-  const NetworkMonitorScreen({super.key});
-  @override
-  State<NetworkMonitorScreen> createState() => _NetworkMonitorScreenState();
-}
+class NetworkDiagnosticDashboard extends StatelessWidget {
+  const NetworkDiagnosticDashboard({super.key});
 
-class _NetworkMonitorScreenState extends State<NetworkMonitorScreen> {
-  final connectivity = Connectivity();
-  StreamSubscription<List<ConnectivityResult>>? subscription;
-  List<ConnectivityResult> active = [ConnectivityResult.none];
-  bool queued = false, requesting = false;
-  String status = 'Checking connection…';
   @override
-  void initState() {
-    super.initState();
-    connectivity.checkConnectivity().then(_onConnectionChanged);
-    subscription = connectivity.onConnectivityChanged.listen(
-      _onConnectionChanged,
+  Widget build(BuildContext context) {
+    final diagnostic = context.watch<NetworkDiagnostics>();
+    final result = diagnostic.latest;
+    final color = switch (diagnostic.health) {
+      NetworkHealth.excellent => Colors.green,
+      NetworkHealth.fair => Colors.orange,
+      NetworkHealth.poor || NetworkHealth.degraded || NetworkHealth.offline => Colors.red,
+      NetworkHealth.checking => _teal,
+    };
+    return Scaffold(
+      appBar: AppBar(title: const Text('Network Diagnostic Dashboard')),
+      bottomNavigationBar: const AppNav(index: 1),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Card(child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(children: [
+              Icon(Icons.monitor_heart_outlined, size: 48, color: color),
+              const SizedBox(height: 10),
+              Text(diagnostic.healthLabel, style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: color, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              Text(diagnostic.message, textAlign: TextAlign.center),
+              if (diagnostic.isRunning) const Padding(padding: EdgeInsets.only(top: 14), child: LinearProgressIndicator()),
+            ]),
+          )),
+          const SizedBox(height: 18),
+          _MetricGrid(result: result),
+          const SizedBox(height: 18),
+          const Text('Test sequence', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Card(child: Column(children: [
+            ListTile(leading: Icon(Icons.looks_one_outlined), title: Text('Idle ping'), subtitle: Text('Baseline latency before transfer')),
+            Divider(height: 1),
+            ListTile(leading: Icon(Icons.looks_two_outlined), title: Text('Download + ping'), subtitle: Text('Bandwidth and latency measured concurrently')),
+            Divider(height: 1),
+            ListTile(leading: Icon(Icons.looks_3_outlined), title: Text('Upload + ping'), subtitle: Text('Bandwidth and latency measured concurrently')),
+          ])),
+          const SizedBox(height: 18),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52), backgroundColor: _teal),
+            onPressed: diagnostic.isRunning ? null : diagnostic.runDiagnostic,
+            icon: const Icon(Icons.refresh),
+            label: Text(diagnostic.isRunning ? 'Running diagnostics...' : 'Run diagnostic now'),
+          ),
+        ],
+      ),
     );
   }
+}
 
-  bool get online => active.any((item) => item != ConnectivityResult.none);
-  String get interfaceName {
-    if (!online) return 'Offline';
-    if (active.contains(ConnectivityResult.wifi)) return 'Wi-Fi';
-    if (active.contains(ConnectivityResult.mobile)) return 'Cellular';
-    return 'Connected';
-  }
+class _MetricGrid extends StatelessWidget {
+  const _MetricGrid({required this.result});
+  final DiagnosticResult? result;
+  @override
+  Widget build(BuildContext context) => GridView.count(
+    crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+    childAspectRatio: 1.7, crossAxisSpacing: 12, mainAxisSpacing: 12,
+    children: [
+      _MetricCard('Idle ping', _ms(result?.idlePingMs), Icons.speed),
+      _MetricCard('Download', _mbps(result?.downloadMbps), Icons.download_outlined),
+      _MetricCard('Download ping', _ms(result?.downloadPingMs), Icons.downloading_outlined),
+      _MetricCard('Upload', _mbps(result?.uploadMbps), Icons.upload_outlined),
+      _MetricCard('Upload ping', _ms(result?.uploadPingMs), Icons.upload_file_outlined),
+      _MetricCard('Packet loss', result == null ? 'N/A' : '${(result!.packetLoss * 100).toStringAsFixed(0)}%', Icons.warning_amber_outlined),
+    ],
+  );
+  static String _ms(double? value) => value == null || !value.isFinite ? 'N/A' : '${value.toStringAsFixed(0)} ms';
+  static String _mbps(double? value) => value == null ? 'N/A' : '${value.toStringAsFixed(1)} Mbps';
+}
 
-  void _onConnectionChanged(List<ConnectivityResult> result) {
-    if (!mounted) return;
-    setState(() {
-      active = result;
-      status = online
-          ? 'Connected through $interfaceName'
-          : 'No connection — requests will be queued';
-    });
-    if (online && queued) _runRequest(recovery: true);
-  }
+class _MetricCard extends StatelessWidget {
+  const _MetricCard(this.label, this.value, this.icon);
 
-  Future<void> _runRequest({bool recovery = false}) async {
-    if (!online) {
-      setState(() {
-        queued = true;
-        status = 'Request queued until a connection returns';
-      });
-      return;
-    }
-    setState(() {
-      requesting = true;
-      queued = false;
-      status = recovery
-          ? 'Connection restored — retrying request…'
-          : 'Fetching simulated large dataset…';
-    });
-    await Future<void>.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-    setState(() {
-      requesting = false;
-      if (!online) {
-        queued = true;
-        status = 'Connection changed — safely queued';
-      } else {
-        status = 'Dataset request completed via $interfaceName';
-      }
-    });
-  }
+  final String label;
+  final String value;
+  final IconData icon;
 
   @override
-  void dispose() {
-    subscription?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Network Monitor')),
-    body: Padding(
-      padding: const EdgeInsets.all(20),
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Card(
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(18),
-              leading: Icon(
-                online ? Icons.wifi : Icons.wifi_off,
-                color: online ? Colors.green : Colors.red,
-                size: 40,
-              ),
-              title: Text(
-                interfaceName,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              subtitle: Text(
-                online
-                    ? 'Stable connection detected'
-                    : 'Waiting for Wi-Fi or cellular',
-              ),
-            ),
+          Icon(icon, size: 20, color: _teal),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 18),
-          Text(status),
-          const Spacer(),
-          if (requesting) const Center(child: CircularProgressIndicator()),
-          if (queued)
-            const Chip(
-              avatar: Icon(Icons.schedule),
-              label: Text('1 request queued for recovery'),
-            ),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-              backgroundColor: _teal,
-            ),
-            onPressed: requesting ? null : _runRequest,
-            icon: const Icon(Icons.cloud_download_outlined),
-            label: const Text('Simulate dataset request'),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),
